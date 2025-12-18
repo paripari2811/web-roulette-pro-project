@@ -305,46 +305,96 @@
 	<!-- Wallet Connector Script -->
 	<script src="/frontend/script/walletConnector.js"></script>
 	<script>
-		// Wallet connect button - auto-detect and connect
-		$(document).on('click', '#walletConnectBtn', async function(e) {
+		// Solana wallet button
+		$(document).on('click', '#solanaConnectBtn', async function(e) {
 			e.preventDefault();
+			const btn = $(this);
+			const state = WalletConnector.getState();
+
+			// If already connected to Solana, disconnect
+			if (state.connected && state.chainType === 'solana') {
+				WalletConnector.disconnect();
+				return;
+			}
+
+			// Disconnect EVM if connected
+			if (state.connected && state.chainType === 'evm') {
+				WalletConnector.disconnect();
+			}
+
+			btn.text('Loading...');
 
 			try {
-				let result;
+				let provider = null;
 
-				// Try Solana wallet first (Phantom)
+				// Try Phantom first
 				if (window.solana?.isPhantom) {
-					result = await WalletConnector.connectSolana(window.solana);
+					provider = window.solana;
 				}
-				// Try EVM wallet (MetaMask or any ethereum provider)
-				else if (window.ethereum) {
-					result = await WalletConnector.connectEVM(window.ethereum);
+				// Then try Solflare
+				else if (window.solflare?.isSolflare) {
+					provider = window.solflare;
 				}
-				else {
-					throw new Error('No wallet found. Please install Phantom or MetaMask.');
+				// Then try any Solana wallet
+				else if (window.solana) {
+					provider = window.solana;
 				}
 
+				if (!provider) {
+					throw new Error('Please install Phantom or Solflare wallet');
+				}
+
+				await WalletConnector.connectSolana(provider);
 				WalletConnector.updateUI();
-
-				// Auto-login with wallet address (Solana)
-				if (result.chainType === 'solana') {
-					$.ajax({
-						type: 'POST',
-						url: "/login",
-						data: { walletId: result.address },
-						success: function(resultData) {
-							try {
-								resultData = JSON.parse(resultData);
-								if (resultData.status === 'success') {
-									location.reload();
-								}
-							} catch (e) {}
-						}
-					});
-				}
 			} catch (error) {
-				console.error('Wallet connection error:', error);
-				alert(error.message || 'Failed to connect wallet');
+				btn.text('Solana');
+				alert(error.message || 'Failed to connect Solana wallet');
+			}
+		});
+
+		// EVM wallet button
+		$(document).on('click', '#evmConnectBtn', async function(e) {
+			e.preventDefault();
+			const btn = $(this);
+			const state = WalletConnector.getState();
+
+			// If already connected to EVM, disconnect
+			if (state.connected && state.chainType === 'evm') {
+				WalletConnector.disconnect();
+				return;
+			}
+
+			// Disconnect Solana if connected
+			if (state.connected && state.chainType === 'solana') {
+				WalletConnector.disconnect();
+			}
+
+			btn.text('Loading...');
+
+			try {
+				let provider = null;
+
+				// Check for multiple providers
+				if (window.ethereum?.providers?.length) {
+					// Try MetaMask first
+					provider = window.ethereum.providers.find(p => p.isMetaMask);
+					// Then try Coinbase
+					if (!provider) provider = window.ethereum.providers.find(p => p.isCoinbaseWallet);
+					// Then use first available
+					if (!provider) provider = window.ethereum.providers[0];
+				} else if (window.ethereum) {
+					provider = window.ethereum;
+				}
+
+				if (!provider) {
+					throw new Error('Please install MetaMask or another EVM wallet');
+				}
+
+				await WalletConnector.connectEVM(provider);
+				WalletConnector.updateUI();
+			} catch (error) {
+				btn.text('EVM');
+				alert(error.message || 'Failed to connect EVM wallet');
 			}
 		});
 	</script>
