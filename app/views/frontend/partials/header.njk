@@ -31,15 +31,28 @@
         </ul>
       </div>
     </div> 
-    {% else %}  
+    {% else %}
     <div class="collapse navbar-collapse menu_toggle" id="navbarCollapse">
-      <button type="button" id="muteButton" value="" style="border: 0; background: transparent; outline: none;"></button> 
+      <button type="button" id="muteButton" value="" style="border: 0; background: transparent; outline: none;"></button>
       <div class="form-inline mt-2 mt-md-0">
         <ul class="navbar-nav user_links btn_lsn">
-          <li><a class="nav-link" href="#" id="userlogin">login</a></li>      
+          <li>
+            <a class="nav-link wallet-connect-btn" href="#" id="walletConnectBtn" data-connected="false">
+              <span id="connectWalletText">
+                <i class="fa fa-wallet"></i> Connect Wallet
+              </span>
+              <span id="walletInfo" style="display: none;">
+                <span class="wallet-address" id="walletAddress"></span>
+                <span class="wallet-balance-display">
+                  <span id="walletBalance">0</span>
+                  <span id="walletSymbol">SOL</span>
+                </span>
+              </span>
+            </a>
+          </li>
         </ul>
       </div>
-    </div> 
+    </div>
     {% endif %}
     <a href="javascript:void(0);" class="chat_toggle"><i class="fa fa-comments"></i></a>
   </nav>

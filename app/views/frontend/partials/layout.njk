@@ -5,8 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ config.siteName }}</title>
 {% include "frontend/partials/css.njk" %}
+  <!-- Solana Web3.js -->
   <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
   <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
+  <!-- Ethers.js for EVM chains -->
+  <script src="https://cdn.ethers.io/lib/ethers-5.7.umd.min.js"></script>
 {% block style %}{% endblock %}
 </head>
 
@@ -302,52 +305,222 @@
 			}
 		})
 	</script>
-	<script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+	<!-- Wallet Connector Script -->
+	<script src="/frontend/script/walletConnector.js"></script>
 	<script type="module">
-		$(document).on("click","#userlogin", async () => {
-			if (window.solana) {
-				let isPhantom = window.solana.isPhantom;
-				if (isPhantom) {
-					try {
-						let resp = await window.solana.connect();
-						let stringPublicKey = resp.publicKey;
-						let solanalib = solanaWeb3;
-						let walletClusterApiUrl = "{{config.walletClusterApiUrl}}"
-						let connection = new solanalib.Connection(solanalib.clusterApiUrl(walletClusterApiUrl));
-						await connection.getAccountInfo(stringPublicKey).then(accountData => {  
-							if(accountData == null){
-								$.toast({ heading: 'Error', text: "No Balance in the Phantom wallet. Please add currency and Login.",position: 'top-right',icon: 'error'});
-							} else {
-								$.ajax({
-									type: 'POST',
-									url: "/login", 
-									data: {walletId: stringPublicKey.toString()},
-									success: function(resultData) {
-										console.log('resultData -->', resultData ) 
-										resultData = JSON.parse(resultData)
-										if(resultData.status == 'success'){
-											location.reload();
-										} else {
-											$.toast({ heading: 'Error', text: resultData.message,position: 'top-right',icon: 'error'});
-										}
-									}
-								})
-							}
-						}, accountReject => {
-							$.toast({ heading: 'Error', text: "Account detail not found.",position: 'top-right',icon: 'error'});
-						});
-					} catch (err) {
-						$.toast({ heading: 'Error', text: "Something is wrong. Please try again.",position: 'top-right',icon: 'error'});
-					}
-				} else {
-					$.toast({ heading: 'Error', text: "Something is wrong. Please try again.",position: 'top-right',icon: 'error'});
-				}
-			} else {
-				$.toast({ heading: 'Error', text: "Please install Phantom Wallet to Login.",position: 'top-right',icon: 'error'});
-				setTimeout(function(){
-					location.replace("https://chrome.google.com/webstore/detail/phantom/bfnaelmomeimhlpmgjnjophhpkkoljpa")
-				}, 3000)
+		// Wallet connection configuration
+		const walletClusterApiUrl = "{{config.walletClusterApiUrl}}";
+
+		// Detect and update wallet statuses
+		function updateWalletStatuses() {
+			// Solana wallets
+			const phantomStatus = document.getElementById('phantomStatus');
+			const solflareStatus = document.getElementById('solflareStatus');
+
+			if (phantomStatus) {
+				phantomStatus.textContent = window.solana?.isPhantom ? 'Available' : 'Not Installed';
+				phantomStatus.className = 'wallet-status ' + (window.solana?.isPhantom ? 'available' : 'not-installed');
 			}
+			if (solflareStatus) {
+				solflareStatus.textContent = window.solflare?.isSolflare ? 'Available' : 'Not Installed';
+				solflareStatus.className = 'wallet-status ' + (window.solflare?.isSolflare ? 'available' : 'not-installed');
+			}
+
+			// EVM wallets
+			const metamaskStatus = document.getElementById('metamaskStatus');
+			const coinbaseStatus = document.getElementById('coinbaseStatus');
+			const browserWalletStatus = document.getElementById('browserWalletStatus');
+
+			if (metamaskStatus) {
+				metamaskStatus.textContent = window.ethereum?.isMetaMask ? 'Available' : 'Not Installed';
+				metamaskStatus.className = 'wallet-status ' + (window.ethereum?.isMetaMask ? 'available' : 'not-installed');
+			}
+			if (coinbaseStatus) {
+				const hasCoinbase = window.ethereum?.isCoinbaseWallet ||
+					window.ethereum?.providers?.some(p => p.isCoinbaseWallet);
+				coinbaseStatus.textContent = hasCoinbase ? 'Available' : 'Not Installed';
+				coinbaseStatus.className = 'wallet-status ' + (hasCoinbase ? 'available' : 'not-installed');
+			}
+			if (browserWalletStatus) {
+				browserWalletStatus.textContent = window.ethereum ? 'Available' : 'Not Installed';
+				browserWalletStatus.className = 'wallet-status ' + (window.ethereum ? 'available' : 'not-installed');
+			}
+		}
+
+		// Initialize wallet detection after DOM loaded
+		$(document).ready(function() {
+			// Give wallets time to inject
+			setTimeout(updateWalletStatuses, 500);
+
+			// Try to reconnect to previously connected wallet
+			WalletConnector.tryReconnect().then(connected => {
+				if (connected) {
+					WalletConnector.updateUI();
+				}
+			});
+		});
+
+		// Chain type toggle in modal
+		$(document).on('click', '.wallet-chain-btn', function() {
+			$('.wallet-chain-btn').removeClass('active');
+			$(this).addClass('active');
+
+			const chain = $(this).data('chain');
+			if (chain === 'solana') {
+				$('#solanaWalletList').show();
+				$('#evmWalletList').hide();
+			} else {
+				$('#solanaWalletList').hide();
+				$('#evmWalletList').show();
+			}
+		});
+
+		// Wallet connect button click - show modal or wallet info
+		$(document).on('click', '#walletConnectBtn', async function(e) {
+			e.preventDefault();
+
+			const isConnected = $(this).data('connected') === true || $(this).attr('data-connected') === 'true';
+
+			if (isConnected) {
+				// Show connected wallet modal with disconnect option
+				const state = WalletConnector.getState();
+				$('#connectedChainName').text(state.chainType === 'solana' ? 'Solana' : (state.chainName || 'EVM'));
+				$('#connectedFullAddress').text(state.address);
+				$('#connectedBalance').text(WalletConnector.formatBalance(state.balance));
+				$('#connectedSymbol').text(state.symbol || '');
+				$('#walletConnectedModal').modal('show');
+			} else {
+				// Show wallet selection modal
+				updateWalletStatuses();
+				$('#walletModal').modal('show');
+			}
+		});
+
+		// Handle wallet option click
+		$(document).on('click', '.wallet-option', async function() {
+			const walletType = $(this).data('wallet');
+			const $statusEl = $('#walletConnectionStatus');
+
+			$statusEl.show();
+			$('.wallet-list').hide();
+
+			try {
+				let result;
+
+				// Solana wallets
+				if (walletType === 'phantom') {
+					if (!window.solana?.isPhantom) {
+						throw new Error('Phantom wallet not installed');
+					}
+					result = await WalletConnector.connectSolana(window.solana);
+				}
+				else if (walletType === 'solflare') {
+					if (!window.solflare?.isSolflare) {
+						throw new Error('Solflare wallet not installed');
+					}
+					result = await WalletConnector.connectSolana(window.solflare);
+				}
+				// EVM wallets
+				else if (walletType === 'metamask') {
+					if (!window.ethereum?.isMetaMask) {
+						// Try to find MetaMask in providers array
+						const provider = window.ethereum?.providers?.find(p => p.isMetaMask);
+						if (!provider) throw new Error('MetaMask wallet not installed');
+						result = await WalletConnector.connectEVM(provider);
+					} else {
+						result = await WalletConnector.connectEVM(window.ethereum);
+					}
+				}
+				else if (walletType === 'coinbase') {
+					const provider = window.ethereum?.isCoinbaseWallet ?
+						window.ethereum :
+						window.ethereum?.providers?.find(p => p.isCoinbaseWallet);
+					if (!provider) throw new Error('Coinbase wallet not installed');
+					result = await WalletConnector.connectEVM(provider);
+				}
+				else if (walletType === 'browserWallet') {
+					if (!window.ethereum) throw new Error('No browser wallet found');
+					result = await WalletConnector.connectEVM(window.ethereum);
+				}
+
+				// Connection successful
+				$('#walletModal').modal('hide');
+				WalletConnector.updateUI();
+
+				$.toast({
+					heading: 'Success',
+					text: `Connected to ${result.walletName}`,
+					position: 'top-right',
+					icon: 'success'
+				});
+
+				// Optional: Auto-login with wallet address
+				if (result.chainType === 'solana') {
+					$.ajax({
+						type: 'POST',
+						url: "/login",
+						data: { walletId: result.address },
+						success: function(resultData) {
+							try {
+								resultData = JSON.parse(resultData);
+								if (resultData.status === 'success') {
+									location.reload();
+								}
+							} catch (e) {
+								// Silent fail for login, wallet is still connected
+							}
+						}
+					});
+				}
+
+			} catch (error) {
+				console.error('Wallet connection error:', error);
+				$.toast({
+					heading: 'Error',
+					text: error.message || 'Failed to connect wallet',
+					position: 'top-right',
+					icon: 'error'
+				});
+			} finally {
+				$statusEl.hide();
+				$('#solanaWalletList').show();
+			}
+		});
+
+		// Copy address button
+		$(document).on('click', '#copyAddressBtn', function() {
+			const state = WalletConnector.getState();
+			if (state.address) {
+				navigator.clipboard.writeText(state.address).then(() => {
+					$.toast({
+						heading: 'Copied',
+						text: 'Address copied to clipboard',
+						position: 'top-right',
+						icon: 'success'
+					});
+				});
+			}
+		});
+
+		// Disconnect wallet button
+		$(document).on('click', '#disconnectWalletBtn', function() {
+			WalletConnector.disconnect();
+			$('#walletConnectedModal').modal('hide');
+			$.toast({
+				heading: 'Disconnected',
+				text: 'Wallet disconnected',
+				position: 'top-right',
+				icon: 'info'
+			});
+		});
+
+		// Reset modal state when closed
+		$('#walletModal').on('hidden.bs.modal', function() {
+			$('#walletConnectionStatus').hide();
+			$('#solanaWalletList').show();
+			$('#evmWalletList').hide();
+			$('.wallet-chain-btn').removeClass('active');
+			$('#solanaChainBtn').addClass('active');
 		});
 	</script>
 	{% block script %}{% endblock %}
