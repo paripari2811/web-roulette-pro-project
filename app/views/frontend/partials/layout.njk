@@ -302,51 +302,99 @@
 			}
 		})
 	</script>
-	<script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
-	<script type="module">
-		$(document).on("click","#userlogin", async () => {
-			if (window.solana) {
-				let isPhantom = window.solana.isPhantom;
-				if (isPhantom) {
-					try {
-						let resp = await window.solana.connect();
-						let stringPublicKey = resp.publicKey;
-						let solanalib = solanaWeb3;
-						let walletClusterApiUrl = "{{config.walletClusterApiUrl}}"
-						let connection = new solanalib.Connection(solanalib.clusterApiUrl(walletClusterApiUrl));
-						await connection.getAccountInfo(stringPublicKey).then(accountData => {  
-							if(accountData == null){
-								$.toast({ heading: 'Error', text: "No Balance in the Phantom wallet. Please add currency and Login.",position: 'top-right',icon: 'error'});
-							} else {
-								$.ajax({
-									type: 'POST',
-									url: "/login", 
-									data: {walletId: stringPublicKey.toString()},
-									success: function(resultData) {
-										console.log('resultData -->', resultData ) 
-										resultData = JSON.parse(resultData)
-										if(resultData.status == 'success'){
-											location.reload();
-										} else {
-											$.toast({ heading: 'Error', text: resultData.message,position: 'top-right',icon: 'error'});
-										}
-									}
-								})
-							}
-						}, accountReject => {
-							$.toast({ heading: 'Error', text: "Account detail not found.",position: 'top-right',icon: 'error'});
-						});
-					} catch (err) {
-						$.toast({ heading: 'Error', text: "Something is wrong. Please try again.",position: 'top-right',icon: 'error'});
-					}
-				} else {
-					$.toast({ heading: 'Error', text: "Something is wrong. Please try again.",position: 'top-right',icon: 'error'});
+	<!-- Wallet Connector Script -->
+	<script src="/frontend/script/walletConnector.js"></script>
+	<script>
+		// Solana wallet button
+		$(document).on('click', '#solanaConnectBtn', async function(e) {
+			e.preventDefault();
+			const btn = $(this);
+			const state = WalletConnector.getState();
+
+			// If already connected to Solana, disconnect
+			if (state.connected && state.chainType === 'solana') {
+				WalletConnector.disconnect();
+				return;
+			}
+
+			// Disconnect EVM if connected
+			if (state.connected && state.chainType === 'evm') {
+				WalletConnector.disconnect();
+			}
+
+			btn.text('Loading...');
+
+			try {
+				let provider = null;
+
+				// Try Phantom first
+				if (window.solana?.isPhantom) {
+					provider = window.solana;
 				}
-			} else {
-				$.toast({ heading: 'Error', text: "Please install Phantom Wallet to Login.",position: 'top-right',icon: 'error'});
-				setTimeout(function(){
-					location.replace("https://chrome.google.com/webstore/detail/phantom/bfnaelmomeimhlpmgjnjophhpkkoljpa")
-				}, 3000)
+				// Then try Solflare
+				else if (window.solflare?.isSolflare) {
+					provider = window.solflare;
+				}
+				// Then try any Solana wallet
+				else if (window.solana) {
+					provider = window.solana;
+				}
+
+				if (!provider) {
+					throw new Error('Please install Phantom or Solflare wallet');
+				}
+
+				await WalletConnector.connectSolana(provider);
+				WalletConnector.updateUI();
+			} catch (error) {
+				btn.text('Solana');
+				alert(error.message || 'Failed to connect Solana wallet');
+			}
+		});
+
+		// EVM wallet button
+		$(document).on('click', '#evmConnectBtn', async function(e) {
+			e.preventDefault();
+			const btn = $(this);
+			const state = WalletConnector.getState();
+
+			// If already connected to EVM, disconnect
+			if (state.connected && state.chainType === 'evm') {
+				WalletConnector.disconnect();
+				return;
+			}
+
+			// Disconnect Solana if connected
+			if (state.connected && state.chainType === 'solana') {
+				WalletConnector.disconnect();
+			}
+
+			btn.text('Loading...');
+
+			try {
+				let provider = null;
+
+				// Check for multiple providers
+				if (window.ethereum?.providers?.length) {
+					// Try MetaMask first
+					provider = window.ethereum.providers.find(p => p.isMetaMask);
+					// Then try Coinbase
+					if (!provider) provider = window.ethereum.providers.find(p => p.isCoinbaseWallet);
+					// Then use first available
+					if (!provider) provider = window.ethereum.providers[0];
+				} else if (window.ethereum) {
+					provider = window.ethereum;
+				}
+
+				if (!provider) {
+					throw new Error('Please install MetaMask or another EVM wallet');
+				}
+
+				await WalletConnector.connectEVM(provider);
+				WalletConnector.updateUI();
+			} catch (error) {
+				btn.text('EVM');
+				alert(error.message || 'Failed to connect EVM wallet');
 			}
 		});
 	</script>
